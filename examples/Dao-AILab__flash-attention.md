@@ -10,7 +10,7 @@
 
 ### 3 行まとめ
 
-FlashAttentionはIO認識型の高速・省メモリな注意機構実装で、FlashAttention-2/3/4やCUDA・ROCm向けの導入手順、テスト、Docker利用法を提供します。H100向けFA3、CuTeDSL版FA4、Triton/ROCmバックエンドの設定も説明しています。
+FlashAttention/FlashAttention-2の公式実装。FA3はHopper向け、FA4はCuTeDSLでHopper/Blackwell向け。CUDA/ROCm、PyTorch 2.2以上、ninja等が必要。pipまたはsetup.pyで導入し、関数で注意機構を実行する。
 
 
 - **リポジトリ**: Dao-AILab/flash-attention
@@ -37,178 +37,73 @@ FlashAttentionはIO認識型の高速・省メモリな注意機構実装で、F
 以下のインストール手順が確認されました。
 
 
-**ステップ 1**: FlashAttention-3のディレクトリへ移動します。
-
-```
-cd hopper
-```
-
-
-**ステップ 2**: FlashAttention-3をインストールします。
-
-```
-python setup.py install
-```
-
-
-**ステップ 3**: テスト用にPYTHONPATHを設定します。
-
-```
-export PYTHONPATH=$PWD
-```
-
-
-**ステップ 4**: FlashAttention-3のテストを実行します。
-
-```
-pytest -q -s test_flash_attn.py
-```
-
-
-**ステップ 5**: FlashAttention-4をインストールします。
-
-```
-pip install flash-attn-4
-```
-
-
-**ステップ 6**: CUDA 13向けにFlashAttention-4をインストールします。
-
-```
-pip install "flash-attn-4[cu13]"
-```
-
-
-**ステップ 7**: 必要なPythonパッケージpackagingをインストールします。
+**ステップ 1**: Pythonパッケージ packaging をインストール
 
 ```
 pip install packaging
 ```
 
 
-**ステップ 8**: 必要なPythonパッケージpsutilをインストールします。
+**ステップ 2**: Pythonパッケージ psutil をインストール
 
 ```
 pip install psutil
 ```
 
 
-**ステップ 9**: 必要なビルドツールninjaをインストールします。
+**ステップ 3**: 高速コンパイル用の ninja をインストール
 
 ```
 pip install ninja
 ```
 
 
-**ステップ 10**: ninjaが正しく動作しない場合に再インストールします。
-
-```
-pip uninstall -y ninja && pip install ninja
-```
-
-
-**ステップ 11**: FlashAttentionを通常インストールします。
+**ステップ 4**: FlashAttention 本体をインストール
 
 ```
 pip install flash-attn --no-build-isolation
 ```
 
 
-**ステップ 12**: ソースからコンパイルしてインストールします。
-
-```
-python setup.py install
-```
-
-
-**ステップ 13**: 並列ビルド数を制限してRAM消費を抑えます。
+**ステップ 5**: RAM不足時に並列ビルド数を制限してインストール
 
 ```
 MAX_JOBS=4 pip install flash-attn --no-build-isolation
 ```
 
 
-**ステップ 14**: ROCm Tritonバックエンド手順のためリポジトリへ移動します。
+**ステップ 6**: FlashAttention-3 beta を hopper ディレクトリからインストール
 
 ```
-cd flash-attention
-```
-
-
-**ステップ 15**: ROCm向けTritonバックエンドを有効にしてインストールします。
-
-```
-FLASH_ATTENTION_TRITON_AMD_ENABLE="TRUE" pip install --no-build-isolation .
+cd hopper && python setup.py install
 ```
 
 
-**ステップ 16**: システムTritonを保持する手順のため移動します。
+**ステップ 7**: FlashAttention-3 のテストを実行
 
 ```
-cd flash-attention
-```
-
-
-**ステップ 17**: 既存のTritonを使うように指定してインストールします。
-
-```
-FLASH_ATTENTION_TRITON_AMD_ENABLE="TRUE" AITER_USE_SYSTEM_TRITON=1 pip install --no-build-isolation .
+cd hopper && export PYTHONPATH=$PWD && pytest -q -s test_flash_attn.py
 ```
 
 
-**ステップ 18**: システムaiterを使う手順のため移動します。
+**ステップ 8**: FlashAttention-4 (CuTeDSL) をインストール
 
 ```
-cd flash-attention
-```
-
-
-**ステップ 19**: 既存のaiterを使ってインストールします。
-
-```
-FLASH_ATTENTION_TRITON_AMD_ENABLE="TRUE" FLASH_ATTENTION_USE_SYSTEM_AITER="TRUE" pip install --no-build-isolation .
+pip install flash-attn-4
 ```
 
 
-**ステップ 20**: 特定aiterコミットを使う手順のため移動します。
+**ステップ 9**: CUDA 13 向けに flash-attn-4 をインストール
 
 ```
-cd flash-attention
-```
-
-
-**ステップ 21**: aiterを指定コミットに切り替えます。
-
-```
-cd third_party/aiter && git fetch origin && git checkout <commit-sha> && cd ../..
+pip install "flash-attn-4[cu13]"
 ```
 
 
-**ステップ 22**: 指定したaiterコミットでFlashAttentionをビルドします。
+**ステップ 10**: ROCm の Triton バックエンドを有効にしてインストール
 
 ```
 FLASH_ATTENTION_TRITON_AMD_ENABLE="TRUE" pip install --no-build-isolation .
-```
-
-
-**ステップ 23**: ROCm Tritonバックエンドのテストを実行します。
-
-```
-FLASH_ATTENTION_TRITON_AMD_ENABLE="TRUE" pytest tests/test_flash_attn_triton_amd.py
-```
-
-
-**ステップ 24**: Tritonバックエンド用Dockerイメージをビルドします。
-
-```
-docker build -t flash-attn-triton .
-```
-
-
-**ステップ 25**: ビルドしたDockerコンテナを起動します。
-
-```
-docker run -it --network=host --user root --group-add video --cap-add=SYS_PTRACE --security-opt seccomp=unconfined --ipc=host --shm-size 16G --device=/dev/kfd --device=/dev/dri flash-attn-triton
 ```
 
 
@@ -275,9 +170,9 @@ docker run -it --network=host --user root --group-add video --cap-add=SYS_PTRACE
 | 実行モード | dry-run（コマンド未実行） |
 | ツール | Repo Autopsy（自動生成） |
 | 対象リポジトリ | https://github.com/Dao-AILab/flash-attention |
-| 実行環境 | Linux（x86_64） |
+| 実行環境 | macOS 27.0（arm64） |
 
 ---
 
 本レポートは Repo Autopsy による自動生成です。内容は一次判定であり、動作を保証するものではありません。
-検証日: 2026-11-01 ／ 環境: Linux（x86_64）
+検証日: 2026-11-01 ／ 環境: macOS 27.0（arm64）

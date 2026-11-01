@@ -10,7 +10,7 @@
 
 ### 3 行まとめ
 
-Whisperは多言語音声認識・音声翻訳・言語識別を行うTransformerモデルです。pipとffmpegで導入し、CLIまたはPythonから音声ファイルを文字起こしできます。turboは翻訳非対応で、翻訳にはmultilingualモデルを使います。
+Whisperは多言語音声認識・翻訳・言語識別を行うTransformerモデルです。pipで導入し、ffmpegや必要に応じてRustを準備した後、CLIまたはPythonから音声ファイルを文字起こし・翻訳できます。
 
 
 - **リポジトリ**: openai/whisper
@@ -26,7 +26,7 @@ Whisperは多言語音声認識・音声翻訳・言語識別を行うTransforme
 | リポジトリ | [openai/whisper](https://github.com/openai/whisper) |
 | ライセンス | MIT |
 | 最終更新 | 2026-08-31T17:19:19Z |
-| スター数 | 111696 |
+| スター数 | 111700 |
 | 主要言語 | Python |
 | トピック | なし |
 
@@ -37,21 +37,21 @@ Whisperは多言語音声認識・音声翻訳・言語識別を行うTransforme
 以下のインストール手順が確認されました。
 
 
-**ステップ 1**: Whisperの最新リリースをインストールまたは更新します。
+**ステップ 1**: PyPIからWhisperの最新リリースをインストールまたは更新します。
 
 ```
 pip install -U openai-whisper
 ```
 
 
-**ステップ 2**: リポジトリの最新コミットとPython依存関係をインストールします。
+**ステップ 2**: GitHubリポジトリの最新コミットと依存パッケージをインストールします。
 
 ```
 pip install git+https://github.com/openai/whisper.git
 ```
 
 
-**ステップ 3**: リポジトリの最新版にパッケージを更新します。
+**ステップ 3**: 依存関係を変更せずにパッケージを最新版へ更新します。
 
 ```
 pip install --upgrade --no-deps --force-reinstall git+https://github.com/openai/whisper.git
@@ -93,35 +93,35 @@ scoop install ffmpeg
 ```
 
 
-**ステップ 9**: 必要に応じてRust関連のPATHを設定します。
+**ステップ 9**: 必要に応じてRustのcargo用にPATHを設定します。
 
 ```
 export PATH="$HOME/.cargo/bin:$PATH"
 ```
 
 
-**ステップ 10**: setuptools_rustがない場合にインストールします。
+**ステップ 10**: setuptools_rustが見つからない場合にインストールします。
 
 ```
 pip install setuptools-rust
 ```
 
 
-**ステップ 11**: turboモデルで音声ファイルを文字起こしします。
+**ステップ 11**: turboモデルで複数の音声ファイルを文字起こしします。
 
 ```
 whisper audio.flac audio.mp3 audio.wav --model turbo
 ```
 
 
-**ステップ 12**: 言語を指定して日本語音声を文字起こしします。
+**ステップ 12**: 日本語音声を指定して文字起こしします。
 
 ```
 whisper japanese.wav --language Japanese
 ```
 
 
-**ステップ 13**: mediumモデルで日本語音声を英語に翻訳します。
+**ステップ 13**: mediumモデルで日本語音声を英語へ翻訳します。
 
 ```
 whisper japanese.wav --model medium --language Japanese --task translate
@@ -206,9 +206,9 @@ Apple Silicon 環境での動作に条件がある可能性があります。
 | 実行モード | dry-run（コマンド未実行） |
 | ツール | Repo Autopsy（自動生成） |
 | 対象リポジトリ | https://github.com/openai/whisper |
-| 実行環境 | Linux（x86_64） |
+| 実行環境 | macOS 27.0（arm64） |
 
 ---
 
 本レポートは Repo Autopsy による自動生成です。内容は一次判定であり、動作を保証するものではありません。
-検証日: 2026-11-01 ／ 環境: Linux（x86_64）
+検証日: 2026-11-01 ／ 環境: macOS 27.0（arm64）
