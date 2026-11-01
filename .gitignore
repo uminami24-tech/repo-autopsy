@@ -1,0 +1,56 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+wheels/
+*.whl
+MANIFEST
+
+# 仮想環境
+.venv/
+venv/
+env/
+ENV/
+
+# 環境変数（実値は絶対にコミットしない）
+.env
+.env.local
+.env.*.local
+
+# テスト・カバレッジ
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.xml
+
+# Hypothesis
+.hypothesis/
+
+# エディタ・IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# mypy / ruff / pyright
+.mypy_cache/
+.ruff_cache/
+pyrightconfig.json
+
+# ビルド成果物
+*.pyc
+*.log
+
+# NOTE: reports/ は .gitignore に入れない（生成レポートはリポジトリに含める）
+# NOTE: .kiro/ は絶対に無視しない（Kiro の仕様・ステアリングが含まれる）

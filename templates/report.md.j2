@@ -1,0 +1,213 @@
+# {{ meta.repo }} 検証レポート
+
+> 本レポートは Repo Autopsy による自動生成です。内容は一次判定であり、動作を保証するものではありません。
+
+---
+
+## 判定: {{ verdict.label.value }}（一次判定）
+
+{% if plan and plan.llm_error -%}
+> ⚠️ **暫定判定**: LLM 要約なし・手順未取得のため、ルールベース（メタデータのみ）による判定です。実際の動作は README を直接ご確認ください。
+>
+> LLM エラー: {{ plan.llm_error }}
+
+{% endif -%}
+{{ verdict.summary_ja }}
+
+### 3 行まとめ
+
+{% if plan and plan.summary_ja -%}
+{{ plan.summary_ja }}
+{% else -%}
+（要約の取得に失敗しました。以下の基本情報をご確認ください）
+{% endif %}
+
+- **リポジトリ**: {{ meta.owner }}/{{ meta.repo }}
+- **判定ラベル**: {{ verdict.label.value }}（一次判定。実際の動作は環境により異なります）
+- **判定根拠**: {% if verdict.signals %}{{ verdict.signals | length }} 件のシグナルを検出{% else %}シグナルなし（罠・条件付きシグナルは検出されませんでした）{% endif %}
+
+---
+
+## 基本情報
+
+| 項目 | 内容 |
+|------|------|
+| リポジトリ | [{{ meta.owner }}/{{ meta.repo }}]({{ meta.url }}) |
+| ライセンス | {{ meta.license_spdx if meta.license_spdx else "不明（ライセンス未設定）" }} |
+| 最終更新 | {{ meta.last_commit_at }} |
+| スター数 | {{ meta.stars }} |
+| 主要言語 | {{ meta.language if meta.language else "不明" }} |
+| トピック | {% if meta.topics %}{{ meta.topics | join(", ") }}{% else %}なし{% endif %} |
+
+---
+
+## インストール手順
+
+{% if plan and plan.steps -%}
+以下のインストール手順が確認されました。
+
+{% for step in plan.steps %}
+**ステップ {{ step.step }}**: {{ step.description }}
+
+```
+{{ step.cmd }}
+```
+
+{% endfor %}
+{% else -%}
+インストール手順を取得できませんでした。
+
+リポジトリの README を直接ご確認ください: {{ meta.url }}
+{% endif %}
+
+---
+
+## 実行結果
+
+{% if run_result.dry_run -%}
+> ⚠️ **dry-run のため未実行**
+>
+> dry-run（実際にはコマンドを実行せず、内容を確認するだけのモード）で動作しています。
+> 実際にコマンドを実行するには `--run` フラグを指定してください。
+
+{% if run_result.safety_issues -%}
+### 安全上の問題（実行不可コマンド）
+
+以下のコマンドは安全上の理由により実行できません：
+
+{% for issue in run_result.safety_issues %}
+- **ステップ {{ issue.step }}**: `{{ issue.cmd }}` → {{ issue.reason }}
+{% endfor %}
+{% endif %}
+{% else -%}
+{% if run_result.steps -%}
+### ステップ別実行結果
+
+| ステップ | コマンド | 結果 | 所要時間 |
+|----------|----------|------|----------|
+{% for step in run_result.steps -%}
+| {{ step.step }} | `{{ step.cmd | truncate(40) }}` | {% if step.timed_out %}⏰ タイムアウト{% elif step.exit_code == 0 %}✅ 成功{% else %}❌ 失敗（exit={{ step.exit_code }}）{% endif %} | {{ "%.1f" | format(step.elapsed_sec) }} 秒 |
+{% endfor %}
+
+{% if run_result.summary -%}
+**実行サマリー**: {{ run_result.summary }}
+{% endif %}
+
+{% for step in run_result.steps %}
+{% if step.stdout or step.stderr %}
+<details>
+<summary>ステップ {{ step.step }} の出力ログ</summary>
+
+{% if step.stdout %}
+**標準出力（stdout）**:
+```
+{{ step.stdout | truncate(500) }}
+```
+{% endif %}
+{% if step.stderr %}
+**標準エラー（stderr）**:
+```
+{{ step.stderr | truncate(500) }}
+```
+{% endif %}
+</details>
+{% endif %}
+{% endfor %}
+
+{% else -%}
+実行可能な手順がありませんでした。
+{% endif %}
+
+{% if run_result.safety_issues -%}
+### 安全上の問題（スキップしたコマンド）
+
+{% for issue in run_result.safety_issues %}
+- **ステップ {{ issue.step }}**: `{{ issue.cmd }}` → {{ issue.reason }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+---
+
+## 判定の根拠
+
+{% if verdict.signals -%}
+以下のシグナルを検出しました：
+
+| ルール | 種類 | 内容 |
+|--------|------|------|
+{% for signal in verdict.signals -%}
+| {{ signal.rule_id }} | {{ signal.kind.value }} | {{ signal.description }} |
+{% endfor %}
+
+{% else -%}
+罠シグナルなし。問題となるシグナルは検出されませんでした。
+{% endif %}
+
+---
+
+## Apple Silicon（Mac）での注意点
+
+{% if verdict.label == "罠" -%}
+このリポジトリには Apple Silicon（arm64、Apple が独自開発した CPU アーキテクチャ）での動作を妨げる可能性のある問題が検出されました。
+
+{% for signal in verdict.signals if signal.kind.value == "罠" %}
+- {{ signal.description }}
+{% endfor %}
+
+**推奨**: 実際に試す前に、上記の問題点を解消できるか確認することをお勧めします。
+
+{% elif verdict.label == "条件付き" -%}
+Apple Silicon 環境での動作に条件がある可能性があります。
+
+{% for signal in verdict.signals if signal.kind.value == "条件付き" %}
+- {{ signal.description }}
+{% endfor %}
+
+**確認事項**: Rosetta（Apple Silicon で x86_64 向けのソフトウェアを動かすための互換レイヤー）のインストールが必要な場合があります。
+
+{% else -%}
+arm64（Apple Silicon 向け CPU アーキテクチャ）への対応が README から確認できました。
+特別な追加設定は不要と考えられますが、実際の動作は環境により異なります。
+{% endif %}
+
+---
+
+## 無料で試せる範囲
+
+{% if plan and plan.summary_ja -%}
+{% set has_paid_api = "有料" in verdict.summary_ja or verdict.signals | selectattr("rule_id", "in", ["R-13", "C-02"]) | list | length > 0 %}
+{% if has_paid_api -%}
+外部 API（有料のサービスのこと）の利用が必要な可能性があります。
+
+{% for signal in verdict.signals if signal.rule_id in ["R-13", "C-02"] %}
+- {{ signal.description }}
+{% endfor %}
+
+API キーの取得方法や無料枠の有無については、各サービスの公式サイトをご確認ください。
+
+{% else -%}
+外部の有料 API への依存は確認されませんでした。リポジトリ本体のみで試せる可能性があります。
+
+ただし、モデルのダウンロードや GPU リソースが必要な場合は別途ご確認ください。
+{% endif %}
+{% else -%}
+LLM による要約が取得できなかったため、無料で試せる範囲の詳細分析ができませんでした。
+リポジトリの README を直接ご確認ください: {{ meta.url }}
+{% endif %}
+
+---
+
+## 検証環境
+
+| 項目 | 内容 |
+|------|------|
+| 検証日 | {{ generated_at | truncate(10, end="") }} |
+| 実行モード | {% if run_result.dry_run %}dry-run（コマンド未実行）{% else %}実行モード{% endif %} |
+| ツール | Repo Autopsy（自動生成） |
+| 対象リポジトリ | {{ meta.url }} |
+
+---
+
+本レポートは Repo Autopsy による自動生成です。内容は一次判定であり、動作を保証するものではありません。
+検証日: {{ generated_at | truncate(10, end="") }} ／ 環境: macOS（Apple Silicon）
