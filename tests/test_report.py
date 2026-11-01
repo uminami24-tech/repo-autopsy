@@ -315,6 +315,32 @@ class TestRender:
         assert "Repo Autopsy" in content
         assert "一次判定" in content
 
+    def test_render_footer_no_fixed_apple_silicon_string(self) -> None:
+        """末尾フッターに固定文字列 'macOS（Apple Silicon）' が含まれないこと。"""
+        content = render(_meta(), _plan(), _run_dry(), _verdict_usable())
+        assert "macOS（Apple Silicon）" not in content
+
+    def test_render_env_label_in_footer(self) -> None:
+        """フッターおよび検証環境テーブルに実行環境ラベルが含まれること。"""
+        import platform
+        from repo_autopsy.report import _build_env_label
+        env_label = _build_env_label()
+        content = render(_meta(), _plan(), _run_dry(), _verdict_usable())
+        # 環境ラベルがレポートに含まれること
+        assert env_label in content
+        # 検証環境テーブルに「実行環境」行があること
+        assert "実行環境" in content
+
+    def test_build_env_label_format(self) -> None:
+        """_build_env_label() が 'システム名（アーキテクチャ）' 形式を返すこと。"""
+        import re
+        from repo_autopsy.report import _build_env_label
+        label = _build_env_label()
+        # 括弧（全角）を含む形式であること
+        assert "（" in label and "）" in label
+        # 空文字列でないこと
+        assert label.strip()
+
     def test_render_with_no_steps_plan(self) -> None:
         """ステップのない plan でもクラッシュしない。"""
         empty_plan = Plan(summary_ja="ステップなし", steps=[], llm_error=None)

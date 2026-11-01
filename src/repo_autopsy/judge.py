@@ -96,6 +96,7 @@ def _days_since_iso(iso_str: str) -> int:
 _RE_CUDA = re.compile(r"cuda|nvidia-smi|torch\.cuda", re.IGNORECASE)
 _RE_ARM64 = re.compile(r"arm64|[Aa]pple [Ss]ilicon", re.IGNORECASE)
 _RE_ARM64_WHEEL = re.compile(r"arm64|[Aa]pple [Ss]ilicon|aarch64", re.IGNORECASE)
+_RE_X86_ONLY = re.compile(r"x86[_-]?64\s+only|intel\s+only|x86[_-]?64\s+exclusive|amd64\s+only", re.IGNORECASE)
 _RE_NC_LICENSE = re.compile(r"CC-BY-NC|AGPL|SSPL", re.IGNORECASE)
 _RE_SUDO = re.compile(r"\bsudo\b")
 _RE_CURL_BASH = re.compile(r"curl\b.*\|\s*(ba)?sh\b", re.DOTALL)
@@ -107,6 +108,7 @@ _RE_KILLED = re.compile(r"\bKilled\b")
 _RE_CMD_NOT_FOUND = re.compile(r"command not found", re.IGNORECASE)
 _RE_PAID_API = re.compile(r"openai\.api_key|OPENAI_API_KEY|ANTHROPIC_API_KEY|claude\b|gpt-4", re.IGNORECASE)
 _RE_FREE_TIER = re.compile(r"無料|free tier|free plan|free quota|free credit", re.IGNORECASE)
+_RE_LOCAL_MODEL = re.compile(r"ollama|localhost|local\s+model|ローカルモデル|locally", re.IGNORECASE)
 
 
 def _r01_cuda(meta: RepoMeta, run_result: RunResult) -> bool:
@@ -115,16 +117,28 @@ def _r01_cuda(meta: RepoMeta, run_result: RunResult) -> bool:
     return bool(_RE_CUDA.search(src))
 
 
-def _r02_no_arm64(meta: RepoMeta, _run: RunResult) -> bool:
-    """R-02: arm64/Apple Silicon 向けバイナリ・wheel の明示がない。"""
-    return not bool(_RE_ARM64_WHEEL.search(meta.readme_text or ""))
+def _r02_x86_only(meta: RepoMeta, _run: RunResult) -> bool:
+    """R-02: README に 'x86_64 only' / 'Intel only' 等の x86 専用の明示があり arm64 の記載がない。
+
+    純 Python など arm64 でも通常動作するツールを誤検知しないよう、
+    「x86 専用と明示」かつ「arm64 の記載がない」場合のみ罠とする。
+    """
+    readme = meta.readme_text or ""
+    return bool(_RE_X86_ONLY.search(readme)) and not bool(_RE_ARM64_WHEEL.search(readme))
 
 
 def _r03_bad_license(meta: RepoMeta, _run: RunResult) -> bool:
-    """R-03: 非商用ライセンス（CC-BY-NC/AGPL）またはライセンス不明。"""
-    spdx = meta.license_spdx or ""
-    if not spdx or spdx == "NOASSERTION":
+    """R-03: LICENSE ファイルが存在しない（None）か非商用ライセンス（CC-BY-NC/AGPL）。
+
+    NOASSERTION（独自ライセンス・判別不能）は罠扱いにせず C-04 にまわす。
+    """
+    spdx = meta.license_spdx
+    if spdx is None:
+        # LICENSE ファイル自体が存在しない → 罠
         return True
+    if spdx == "NOASSERTION":
+        # 独自/判別不能 → C-04 で条件付きとして扱う
+        return False
     return bool(_RE_NC_LICENSE.search(spdx))
 
 
@@ -188,12 +202,9 @@ def _r12_cmd_not_found(_meta: RepoMeta, run_result: RunResult) -> bool:
     return bool(_RE_CMD_NOT_FOUND.search(_all_logs(run_result)))
 
 
-def _r13_paid_api_only(meta: RepoMeta, run_result: RunResult) -> bool:
-    """R-13: 有料 API への言及があり、無料枠の記載がない。"""
-    src = meta.readme_text + "\n" + _all_cmds(run_result)
-    if not _RE_PAID_API.search(src):
-        return False
-    return not bool(_RE_FREE_TIER.search(src))
+def _r13_reserved(_meta: RepoMeta, _run: RunResult) -> bool:
+    """R-13: 廃止（C-06 に降格）。常に False を返す。"""
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -221,14 +232,44 @@ def _c03_gpl_license(meta: RepoMeta, _run: RunResult) -> bool:
     return bool(_RE_GPL.search(spdx))
 
 
+def _c04_noassertion_license(meta: RepoMeta, _run: RunResult) -> bool:
+    """C-04: NOASSERTION（独自ライセンスまたは判別不能）。LICENSE 本文の確認を推奨。"""
+    return meta.license_spdx == "NOASSERTION"
+
+
+def _c05_no_arm64(meta: RepoMeta, _run: RunResult) -> bool:
+    """C-05: README に arm64/Apple Silicon/aarch64 の明記がない。
+
+    純 Python など arm64 でも動作するケースが多いため罠ではなく条件付きとする。
+    x86 専用が明示されている場合は R-02（罠）が先に発火するためここでは除外しない
+    （両方発火しても問題ないが、R-02 発火時は重複感があるため除外する）。
+    """
+    readme = meta.readme_text or ""
+    return not bool(_RE_ARM64_WHEEL.search(readme))
+
+
+def _c06_paid_api_no_free(meta: RepoMeta, run_result: RunResult) -> bool:
+    """C-06: 有料 API への言及があり無料枠の記載がない。ただしローカルモデルの言及がある場合は除外。
+
+    ローカルモデル（ollama/localhost/local model 等）の言及があれば
+    有料 API 必須ではないと判断し、条件付きシグナルも発火しない。
+    """
+    src = meta.readme_text + "\n" + _all_cmds(run_result)
+    if not _RE_PAID_API.search(src):
+        return False
+    if _RE_LOCAL_MODEL.search(src):
+        return False
+    return not bool(_RE_FREE_TIER.search(src))
+
+
 # ---------------------------------------------------------------------------
 # ルールリスト
 # ---------------------------------------------------------------------------
 
 TRAP_RULES: list[Rule] = [
     Rule("R-01", SignalKind.TRAP, "CUDA/GPU 必須のため Apple Silicon 非対応の可能性があります", _r01_cuda),
-    Rule("R-02", SignalKind.TRAP, "arm64（Apple Silicon）向けバイナリ・wheel の記載が見つかりません", _r02_no_arm64),
-    Rule("R-03", SignalKind.TRAP, "非商用ライセンス（CC-BY-NC/AGPL）またはライセンス不明です", _r03_bad_license),
+    Rule("R-02", SignalKind.TRAP, "README に x86_64 専用（Intel only 等）の明示があり arm64 の記載がありません", _r02_x86_only),
+    Rule("R-03", SignalKind.TRAP, "LICENSE ファイルが存在しない、または非商用ライセンス（CC-BY-NC/AGPL）です", _r03_bad_license),
     Rule("R-04", SignalKind.TRAP, "最終コミットが 1 年以上前（放置リポジトリの可能性があります）", _r04_stale_repo),
     Rule("R-05", SignalKind.TRAP, "スター数が 10 未満の未成熟なリポジトリです", _r05_immature),
     Rule("R-06", SignalKind.TRAP, "sudo（管理者権限）を要求するコマンドが含まれています", _r06_sudo),
@@ -238,13 +279,16 @@ TRAP_RULES: list[Rule] = [
     Rule("R-10", SignalKind.TRAP, "実行ログに 'No matching distribution found'（arm64 非対応 wheel の可能性）が含まれています", _r10_no_distribution),
     Rule("R-11", SignalKind.TRAP, "実行ログに 'Killed'（OOM によるプロセス強制終了）が含まれています", _r11_killed),
     Rule("R-12", SignalKind.TRAP, "実行ログに 'command not found'（必須コマンドの不在）が含まれています", _r12_cmd_not_found),
-    Rule("R-13", SignalKind.TRAP, "有料 API のみ言及されており、無料枠の説明が見当たりません", _r13_paid_api_only),
+    Rule("R-13", SignalKind.TRAP, "（廃止: C-06 に降格）", _r13_reserved),
 ]
 
 CONDITIONAL_RULES: list[Rule] = [
     Rule("C-01", SignalKind.CONDITIONAL, "README に Rosetta または x86_64 の言及があります（Rosetta が必要な可能性があります）", _c01_rosetta),
     Rule("C-02", SignalKind.CONDITIONAL, "有料 API の言及がありますが、無料枠の説明も確認できます", _c02_paid_api_with_free),
     Rule("C-03", SignalKind.CONDITIONAL, "GPL/LGPL ライセンスです（商用利用には条件があります）", _c03_gpl_license),
+    Rule("C-04", SignalKind.CONDITIONAL, "独自ライセンスまたは判別不能（NOASSERTION）です。LICENSE 本文を確認してください", _c04_noassertion_license),
+    Rule("C-05", SignalKind.CONDITIONAL, "arm64（Apple Silicon）の明記がありません。ネイティブ依存（C 拡張・バイナリ）がないか確認してください", _c05_no_arm64),
+    Rule("C-06", SignalKind.CONDITIONAL, "有料 API のみ言及されており無料枠の説明が見当たりません。ローカルモデルへの切り替えや料金を確認してください", _c06_paid_api_no_free),
 ]
 
 

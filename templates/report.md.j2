@@ -33,7 +33,7 @@
 | 項目 | 内容 |
 |------|------|
 | リポジトリ | [{{ meta.owner }}/{{ meta.repo }}]({{ meta.url }}) |
-| ライセンス | {{ meta.license_spdx if meta.license_spdx else "不明（ライセンス未設定）" }} |
+| ライセンス | {% if meta.license_spdx == "NOASSERTION" %}独自/判別不能（NOASSERTION）。LICENSE 本文を確認してください{% elif meta.license_spdx %}{{ meta.license_spdx }}{% else %}不明（ライセンス未設定）{% endif %} |
 | 最終更新 | {{ meta.last_commit_at }} |
 | スター数 | {{ meta.stars }} |
 | 主要言語 | {{ meta.language if meta.language else "不明" }} |
@@ -206,8 +206,9 @@ LLM による要約が取得できなかったため、無料で試せる範囲�
 | 実行モード | {% if run_result.dry_run %}dry-run（コマンド未実行）{% else %}実行モード{% endif %} |
 | ツール | Repo Autopsy（自動生成） |
 | 対象リポジトリ | {{ meta.url }} |
+| 実行環境 | {{ env_label }} |
 
 ---
 
 本レポートは Repo Autopsy による自動生成です。内容は一次判定であり、動作を保証するものではありません。
-検証日: {{ generated_at | truncate(10, end="") }} ／ 環境: macOS（Apple Silicon）
+検証日: {{ generated_at | truncate(10, end="") }} ／ 環境: {{ env_label }}

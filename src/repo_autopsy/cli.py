@@ -26,6 +26,15 @@ app = typer.Typer(
 )
 
 
+def _format_license(spdx: str | None) -> str:
+    """ライセンス識別子を表示用文字列に変換する。"""
+    if spdx is None:
+        return "ライセンス不明（LICENSE ファイルなし）"
+    if spdx == "NOASSERTION":
+        return "独自/判別不能（NOASSERTION）。LICENSE 本文を確認してください"
+    return spdx
+
+
 @app.command()
 def main(
     url: str = typer.Argument(..., help="検証する GitHub リポジトリの URL"),
@@ -56,7 +65,7 @@ def main(
         raise typer.Exit(code=1)
 
     typer.echo(f"[fetch] {meta.full_name} ★{meta.stars} ({meta.language}) 取得完了")
-    typer.echo(f"[fetch] ライセンス: {meta.license_spdx or 'ライセンス不明'}")
+    typer.echo(f"[fetch] ライセンス: {_format_license(meta.license_spdx)}")
     typer.echo(f"[fetch] 最終コミット: {meta.last_commit_at}")
 
     # ── 2. plan（LLM）──────────────────────────────────────────────────────

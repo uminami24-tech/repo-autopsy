@@ -1,0 +1,17 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "pytest-on-save",
+      "description": "src/ または tests/ の Python ファイル保存時に自動でテストを実行する",
+      "trigger": "PostFileSave",
+      "matcher": "(src|tests)/.*\\.py$",
+      "action": {
+        "type": "command",
+        "command": "uv run pytest -q"
+      },
+      "timeout": 120,
+      "enabled": true
+    }
+  ]
+}

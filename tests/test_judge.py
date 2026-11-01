@@ -115,42 +115,70 @@ class TestR01Cuda:
         assert "R-01" not in rule_ids
 
 
-class TestR02NoArm64:
-    """R-02: arm64 向けバイナリ・wheel の明示がない。"""
+class TestR02X86Only:
+    """R-02: README に x86_64 専用（Intel only 等）の明示があり arm64 の記載がない。
 
-    def test_positive(self) -> None:
-        meta = _meta(readme="Install on Linux x86. No arm support.")
+    修正（2026-11-01）:
+      - 旧 R-02「arm64 未記載」は純 Python 等でも発火する誤検知があったため廃止。
+      - 新 R-02 は「x86 専用の明示」かつ「arm64 記載なし」の場合のみ罠とする。
+      - arm64 の明記がない場合は C-05（条件付き）に降格。
+    """
+
+    def test_positive_x86_only_explicit(self) -> None:
+        """'x86_64 only' と明示されている場合は R-02 が発火する。"""
+        meta = _meta(readme="This tool is for x86_64 only. Linux and Windows supported.")
         result = run_rules(meta, _run())
         rule_ids = [s.rule_id for s in result]
         assert "R-02" in rule_ids
 
-    def test_negative_arm64(self) -> None:
-        meta = _meta(readme="Supports arm64 and Apple Silicon.")
+    def test_positive_intel_only(self) -> None:
+        """'Intel only' の明示でも R-02 が発火する。"""
+        meta = _meta(readme="Intel only binary. No ARM support available.")
+        result = run_rules(meta, _run())
+        rule_ids = [s.rule_id for s in result]
+        assert "R-02" in rule_ids
+
+    def test_negative_no_arm64_no_x86_only(self) -> None:
+        """arm64 の明記がなくても x86 専用の明示がなければ R-02 は発火しない（誤検知修正）。"""
+        meta = _meta(readme="A pure Python tool. pip install mypackage")
         result = run_rules(meta, _run())
         rule_ids = [s.rule_id for s in result]
         assert "R-02" not in rule_ids
 
-    def test_negative_aarch64(self) -> None:
-        meta = _meta(readme="aarch64 wheels available on PyPI")
+    def test_negative_arm64_with_x86_mention(self) -> None:
+        """arm64 の記載があれば x86 への言及があっても R-02 は発火しない。"""
+        meta = _meta(readme="Supports arm64 and Apple Silicon. x86_64 only builds are also available.")
+        result = run_rules(meta, _run())
+        rule_ids = [s.rule_id for s in result]
+        assert "R-02" not in rule_ids
+
+    def test_negative_arm64_explicit(self) -> None:
+        """arm64 の明記がある場合は R-02 は発火しない。"""
+        meta = _meta(readme="Supports arm64 and Apple Silicon.")
         result = run_rules(meta, _run())
         rule_ids = [s.rule_id for s in result]
         assert "R-02" not in rule_ids
 
 
 class TestR03BadLicense:
-    """R-03: 非商用ライセンスまたはライセンス不明。"""
+    """R-03: LICENSE ファイルが存在しない（None）か非商用ライセンス（CC-BY-NC/AGPL）。
+
+    NOASSERTION は罠扱いせず C-04 にまわす（新仕様）。
+    """
 
     def test_positive_none(self) -> None:
+        """license_spdx=None（LICENSE ファイル不在）→ 罠。"""
         meta = _meta(readme="arm64 supported", license_spdx=None)
         result = run_rules(meta, _run())
         rule_ids = [s.rule_id for s in result]
         assert "R-03" in rule_ids
 
-    def test_positive_noassertion(self) -> None:
+    def test_noassertion_does_not_trigger_r03(self) -> None:
+        """NOASSERTION は R-03 を発火しない（C-04 で条件付きになる）。"""
         meta = _meta(readme="arm64 supported", license_spdx="NOASSERTION")
         result = run_rules(meta, _run())
         rule_ids = [s.rule_id for s in result]
-        assert "R-03" in rule_ids
+        assert "R-03" not in rule_ids
 
     def test_positive_agpl(self) -> None:
         meta = _meta(readme="arm64 supported", license_spdx="AGPL-3.0-only")
@@ -409,26 +437,23 @@ class TestR12CommandNotFound:
         assert "R-12" not in rule_ids
 
 
-class TestR13PaidApiOnly:
-    """R-13: 有料 API のみ言及、無料枠なし。"""
+class TestR13Reserved:
+    """R-13: 廃止（C-06 に降格）。常に発火しないことを確認。"""
 
-    def test_positive(self) -> None:
+    def test_r13_never_fires_paid_api(self) -> None:
+        """有料 API のみ言及があっても R-13 は発火しない（廃止）。"""
         meta = _meta(readme="arm64 Apple Silicon. Requires OPENAI_API_KEY to run.")
         result = run_rules(meta, _run())
         rule_ids = [s.rule_id for s in result]
-        assert "R-13" in rule_ids
+        assert "R-13" not in rule_ids
 
-    def test_negative_free_tier_mentioned(self) -> None:
-        meta = _meta(readme="arm64 Apple Silicon. Requires OPENAI_API_KEY. Free tier available.")
+    def test_r13_never_fires_no_free_tier(self) -> None:
+        """無料枠の記載がなくても R-13 は発火しない（廃止、代わりに C-06 が発火）。"""
+        meta = _meta(readme="arm64 Apple Silicon. Requires OPENAI_API_KEY to run.")
         result = run_rules(meta, _run())
         rule_ids = [s.rule_id for s in result]
         assert "R-13" not in rule_ids
-
-    def test_negative_no_api(self) -> None:
-        meta = _meta(readme="arm64 Apple Silicon. Fully local, no API needed.")
-        result = run_rules(meta, _run())
-        rule_ids = [s.rule_id for s in result]
-        assert "R-13" not in rule_ids
+        assert "C-06" in rule_ids  # C-06 が代替シグナルを発火する
 
 
 class TestC01Rosetta:
@@ -471,7 +496,7 @@ class TestC02PaidApiWithFree:
         assert "C-02" not in rule_ids
 
     def test_negative_api_but_no_free(self) -> None:
-        """有料 API の言及があるが無料枠の説明がない → C-02 は検出しない（R-13 が検出する）。"""
+        """有料 API の言及があるが無料枠の説明がない → C-02 は検出しない（C-06 が検出する）。"""
         meta = _meta(readme="arm64 Apple Silicon. Requires OPENAI_API_KEY.")
         result = run_rules(meta, _run())
         rule_ids = [s.rule_id for s in result]
@@ -498,6 +523,147 @@ class TestC03GplLicense:
         result = run_rules(meta, _run())
         rule_ids = [s.rule_id for s in result]
         assert "C-03" not in rule_ids
+
+
+class TestC04NoassertionLicense:
+    """C-04: NOASSERTION（独自ライセンスまたは判別不能）。"""
+
+    def test_positive_noassertion(self) -> None:
+        """NOASSERTION → C-04 条件付き（罠にしない）。"""
+        meta = _meta(readme="arm64 Apple Silicon supported", license_spdx="NOASSERTION")
+        result = run_rules(meta, _run())
+        rule_ids = [s.rule_id for s in result]
+        assert "C-04" in rule_ids
+
+    def test_noassertion_is_conditional_not_trap(self) -> None:
+        """NOASSERTION は CONDITIONAL シグナルで、TRAP シグナルではない。"""
+        meta = _meta(
+            readme="arm64 Apple Silicon supported",
+            license_spdx="NOASSERTION",
+            stars=1000,  # R-05 を避ける
+        )
+        # R-02 は arm64 記載で回避、R-04 はデフォルトで回避
+        result = run_rules(meta, _run())
+        c04 = [s for s in result if s.rule_id == "C-04"]
+        assert len(c04) == 1
+        assert c04[0].kind == SignalKind.CONDITIONAL
+
+    def test_negative_mit(self) -> None:
+        """MIT ライセンスでは C-04 は発火しない。"""
+        meta = _meta(readme="arm64 Apple Silicon supported", license_spdx="MIT")
+        result = run_rules(meta, _run())
+        rule_ids = [s.rule_id for s in result]
+        assert "C-04" not in rule_ids
+
+    def test_negative_none(self) -> None:
+        """license=None（LICENSE ファイルなし）は C-04 ではなく R-03（罠）。"""
+        meta = _meta(readme="arm64 Apple Silicon supported", license_spdx=None)
+        result = run_rules(meta, _run())
+        rule_ids = [s.rule_id for s in result]
+        assert "C-04" not in rule_ids
+        assert "R-03" in rule_ids
+
+
+class TestC05NoArm64:
+    """C-05: README に arm64/Apple Silicon/aarch64 の明記がない（条件付き）。
+
+    修正（2026-11-01）: 旧 R-02「arm64 未記載」を条件付きに降格。
+    純 Python 等では arm64 でも動作するため罠ではなく条件付きとする。
+    """
+
+    def test_positive_no_arm64_mention(self) -> None:
+        """arm64 の明記がなければ C-05 が発火する。"""
+        meta = _meta(readme="A pure Python tool for data processing.")
+        result = run_rules(meta, _run())
+        rule_ids = [s.rule_id for s in result]
+        assert "C-05" in rule_ids
+
+    def test_positive_no_arm64_kind_is_conditional(self) -> None:
+        """C-05 は CONDITIONAL（罠ではない）。"""
+        meta = _meta(readme="pip install mytool")
+        result = run_rules(meta, _run())
+        c05 = [s for s in result if s.rule_id == "C-05"]
+        assert len(c05) == 1
+        assert c05[0].kind == SignalKind.CONDITIONAL
+
+    def test_negative_arm64_mentioned(self) -> None:
+        """arm64 の明記があれば C-05 は発火しない。"""
+        meta = _meta(readme="Supports arm64 and Apple Silicon natively.")
+        result = run_rules(meta, _run())
+        rule_ids = [s.rule_id for s in result]
+        assert "C-05" not in rule_ids
+
+    def test_negative_aarch64_mentioned(self) -> None:
+        """aarch64 の明記があれば C-05 は発火しない。"""
+        meta = _meta(readme="aarch64 wheels available on PyPI.")
+        result = run_rules(meta, _run())
+        rule_ids = [s.rule_id for s in result]
+        assert "C-05" not in rule_ids
+
+    def test_negative_apple_silicon_mentioned(self) -> None:
+        """Apple Silicon の明記があれば C-05 は発火しない。"""
+        meta = _meta(readme="Tested on Apple Silicon M2 and M3.")
+        result = run_rules(meta, _run())
+        rule_ids = [s.rule_id for s in result]
+        assert "C-05" not in rule_ids
+
+
+class TestC06PaidApiNoFree:
+    """C-06: 有料 API のみ言及・無料枠なし・ローカルモデルなし（条件付き）。
+
+    修正（2026-11-01）: 旧 R-13「有料 API のみ言及」を条件付きに降格。
+    ローカルモデル（ollama 等）の言及がある場合は発火しない。
+    """
+
+    def test_positive_paid_api_only(self) -> None:
+        """有料 API のみ言及・無料枠なし・ローカルモデルなし → C-06 が発火する。"""
+        meta = _meta(readme="arm64 Apple Silicon. Requires OPENAI_API_KEY to run.")
+        result = run_rules(meta, _run())
+        rule_ids = [s.rule_id for s in result]
+        assert "C-06" in rule_ids
+
+    def test_positive_kind_is_conditional(self) -> None:
+        """C-06 は CONDITIONAL（罠ではない）。"""
+        meta = _meta(readme="arm64 Apple Silicon. Set OPENAI_API_KEY to use.")
+        result = run_rules(meta, _run())
+        c06 = [s for s in result if s.rule_id == "C-06"]
+        assert len(c06) == 1
+        assert c06[0].kind == SignalKind.CONDITIONAL
+
+    def test_negative_free_tier_mentioned(self) -> None:
+        """無料枠の記載があれば C-06 は発火しない（C-02 が発火する）。"""
+        meta = _meta(readme="arm64 Apple Silicon. Requires OPENAI_API_KEY. Free tier available.")
+        result = run_rules(meta, _run())
+        rule_ids = [s.rule_id for s in result]
+        assert "C-06" not in rule_ids
+
+    def test_negative_local_model_ollama(self) -> None:
+        """ollama の言及があれば C-06 は発火しない（simonw/llm ケース）。"""
+        meta = _meta(readme="arm64 Apple Silicon. Works with OPENAI_API_KEY or ollama locally.")
+        result = run_rules(meta, _run())
+        rule_ids = [s.rule_id for s in result]
+        assert "C-06" not in rule_ids
+
+    def test_negative_local_model_localhost(self) -> None:
+        """localhost の言及があれば C-06 は発火しない。"""
+        meta = _meta(readme="arm64 Apple Silicon. Set OPENAI_API_KEY or use localhost:11434.")
+        result = run_rules(meta, _run())
+        rule_ids = [s.rule_id for s in result]
+        assert "C-06" not in rule_ids
+
+    def test_negative_local_model_keyword(self) -> None:
+        """'local model' の言及があれば C-06 は発火しない。"""
+        meta = _meta(readme="arm64 Apple Silicon. Supports OPENAI_API_KEY or local model.")
+        result = run_rules(meta, _run())
+        rule_ids = [s.rule_id for s in result]
+        assert "C-06" not in rule_ids
+
+    def test_negative_no_api_mention(self) -> None:
+        """有料 API への言及がなければ C-06 は発火しない。"""
+        meta = _meta(readme="arm64 Apple Silicon. Fully local, no API needed.")
+        result = run_rules(meta, _run())
+        rule_ids = [s.rule_id for s in result]
+        assert "C-06" not in rule_ids
 
 
 # ---------------------------------------------------------------------------

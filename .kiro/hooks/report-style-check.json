@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "report-style-check",
+      "description": "reports/ または examples/ の Markdown 保存時に日本語スタイルの統一性を確認する",
+      "trigger": "PostFileSave",
+      "matcher": "(reports|examples)/.*\\.md$",
+      "action": {
+        "type": "agent",
+        "prompt": "保存されたファイル {{filePath}} の日本語スタイルを確認してください。以下の3点をチェックし、問題があれば具体的な行番号と修正案を示してください：\n1. です・ます調の統一（だ・である調との混在がないか）\n2. 英語見出しの残り（Markdown の # 見出しが英語のままになっていないか）\n3. 未翻訳段落（日本語レポートに英語の文章ブロックが残っていないか）\n問題がなければ「スタイルチェック：問題なし」と1行で返してください。"
+      },
+      "enabled": true
+    }
+  ]
+}

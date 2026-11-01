@@ -106,15 +106,72 @@ def _fetch_readme(owner: str, repo: str, client: httpx.Client) -> str:
     return decoded
 
 
+def _detect_spdx_from_text(text: str) -> str | None:
+    """ライセンステキストの先頭から SPDX 識別子を簡易判定する（FR-04b）。
+
+    GitHub API が NOASSERTION を返す場合に content（base64 デコード済み）を受け取り、
+    先頭テキストに含まれるキーワードで SPDX 識別子を推定する。
+    判別できない場合は None を返す。
+
+    Args:
+        text: ライセンスファイルのテキスト（先頭部分）。
+
+    Returns:
+        推定された SPDX 識別子（例: "MIT"）、または None。
+    """
+    # 先頭 2000 文字のみ対象（高速判定）
+    head = text[:2000].lower()
+
+    # 判定ルール: 優先度順（より具体的なものを先に）
+    patterns: list[tuple[re.Pattern[str], str]] = [
+        (re.compile(r"\bagpl[\s-]*(version\s*)?3\b|\bwww\.gnu\.org/licenses/agpl"), "AGPL-3.0"),
+        (re.compile(r"\blgpl[\s-]*(version\s*)?3\b|\blesser general public license.*version 3"), "LGPL-3.0"),
+        (re.compile(r"\bgpl[\s-]*(version\s*)?3\b|\bwww\.gnu\.org/licenses/gpl"), "GPL-3.0"),
+        (re.compile(r"\bmozilla public license.*2\.0\b|\bmpl[\s-]*2\.0\b"), "MPL-2.0"),
+        (re.compile(r"\bapache licen[sc]e.*version 2\.0\b|\bapache-2\.0\b|\bapache 2\.0\b"), "Apache-2.0"),
+        (re.compile(r"\bbsd 3[\s-]clause\b|\bredistribution.*in binary form.*reproduce.*conditions\b"), "BSD-3-Clause"),
+        (re.compile(r"\bbsd 2[\s-]clause\b|\bsimplified bsd\b"), "BSD-2-Clause"),
+        (re.compile(r"\bisc licen[sc]e\b|\bpermission to use.*isc\b"), "ISC"),
+        (re.compile(r"\bmit licen[sc]e\b|\bpermission is hereby granted.*mit\b|\b\(c\).*permission is hereby granted"), "MIT"),
+        # MIT は最後（他のライセンスも "permission is hereby granted" を含むため）
+        (re.compile(r"\bpermission is hereby granted.*free of charge.*any person obtaining a copy"), "MIT"),
+    ]
+
+    for pattern, spdx_id in patterns:
+        if pattern.search(head):
+            return spdx_id
+    return None
+
+
 def _fetch_license(owner: str, repo: str, client: httpx.Client) -> str | None:
-    """SPDX ライセンス識別子を返す（FR-04）。LICENSE がなければ None。"""
+    """SPDX ライセンス識別子を返す（FR-04）。LICENSE がなければ None。
+
+    GitHub API が NOASSERTION を返す場合は、ライセンスファイルの content（base64）を
+    デコードして先頭テキストから SPDX 識別子を簡易判定する（FR-04b）。
+    判別できないときは "NOASSERTION" をそのまま返す。
+    """
     resp = client.get(f"{_GITHUB_API_BASE}/repos/{owner}/{repo}/license")
     if resp.status_code == 404:
         return None
     _check_response(resp)
     data = resp.json()
     license_info = data.get("license") or {}
-    return license_info.get("spdx_id") or None
+    spdx_id = license_info.get("spdx_id") or None
+
+    # NOASSERTION の場合: content から SPDX を推定
+    if spdx_id == "NOASSERTION":
+        encoded = data.get("content", "")
+        if encoded:
+            try:
+                license_text = base64.b64decode(encoded.replace("\n", "")).decode("utf-8", errors="replace")
+                detected = _detect_spdx_from_text(license_text)
+                if detected:
+                    return detected
+            except Exception:  # noqa: BLE001
+                pass
+        return "NOASSERTION"
+
+    return spdx_id
 
 
 def _fetch_root_files(owner: str, repo: str, client: httpx.Client) -> list[str]:

@@ -288,3 +288,112 @@ class TestFetchRepo:
     def test_fetch_repo_invalid_url(self):
         with pytest.raises(InvalidURLError):
             fetch_repo("https://example.com/not-github")
+
+
+# ---------------------------------------------------------------------------
+# T-67/68: _detect_spdx_from_text と NOASSERTION content 判定のテスト
+# ---------------------------------------------------------------------------
+
+
+from repo_autopsy.fetch import _detect_spdx_from_text  # noqa: E402
+
+
+class TestDetectSpdxFromText:
+    """T-67: _detect_spdx_from_text が各ライセンステキストを正しく判定する。"""
+
+    def test_mit(self) -> None:
+        text = "MIT License\n\nCopyright (c) 2024\nPermission is hereby granted, free of charge, to any person obtaining a copy"
+        assert _detect_spdx_from_text(text) == "MIT"
+
+    def test_apache2(self) -> None:
+        text = "Apache License\nVersion 2.0\nLicensed under the Apache License, Version 2.0"
+        assert _detect_spdx_from_text(text) == "Apache-2.0"
+
+    def test_bsd3(self) -> None:
+        text = "BSD 3-Clause License\nRedistribution and use in source and binary forms"
+        assert _detect_spdx_from_text(text) == "BSD-3-Clause"
+
+    def test_bsd2(self) -> None:
+        text = "BSD 2-Clause License\nSimplified BSD"
+        assert _detect_spdx_from_text(text) == "BSD-2-Clause"
+
+    def test_isc(self) -> None:
+        text = "ISC License\nPermission to use, copy, modify"
+        assert _detect_spdx_from_text(text) == "ISC"
+
+    def test_mpl2(self) -> None:
+        text = "Mozilla Public License 2.0"
+        assert _detect_spdx_from_text(text) == "MPL-2.0"
+
+    def test_gpl3(self) -> None:
+        text = "GNU General Public License\nGPL version 3\nwww.gnu.org/licenses/gpl"
+        assert _detect_spdx_from_text(text) == "GPL-3.0"
+
+    def test_agpl3(self) -> None:
+        text = "GNU Affero General Public License\nAGPL version 3"
+        assert _detect_spdx_from_text(text) == "AGPL-3.0"
+
+    def test_lgpl3(self) -> None:
+        text = "GNU Lesser General Public License\nLGPL version 3"
+        assert _detect_spdx_from_text(text) == "LGPL-3.0"
+
+    def test_unknown_returns_none(self) -> None:
+        text = "This is a custom proprietary license with unique terms."
+        assert _detect_spdx_from_text(text) is None
+
+    def test_empty_returns_none(self) -> None:
+        assert _detect_spdx_from_text("") is None
+
+
+class TestFetchLicenseNoassertion:
+    """T-68: NOASSERTION + content で判定できるケースと判別不能ケースのテスト。"""
+
+    def test_noassertion_with_mit_content_returns_mit(self) -> None:
+        """NOASSERTION でも content が MIT テキストなら MIT を返す。"""
+        license_text = "MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy"
+        encoded = base64.b64encode(license_text.encode()).decode()
+        body = {
+            "license": {"spdx_id": "NOASSERTION"},
+            "content": encoded,
+        }
+        transport = _make_transport({"/license": (200, body)})
+        with httpx.Client(transport=transport) as client:
+            result = _fetch_license("owner", "repo", client)
+        assert result == "MIT"
+
+    def test_noassertion_with_apache_content_returns_apache(self) -> None:
+        """NOASSERTION + Apache-2.0 テキスト → Apache-2.0 を返す。"""
+        license_text = "Apache License Version 2.0\nLicensed under the Apache License, Version 2.0"
+        encoded = base64.b64encode(license_text.encode()).decode()
+        body = {
+            "license": {"spdx_id": "NOASSERTION"},
+            "content": encoded,
+        }
+        transport = _make_transport({"/license": (200, body)})
+        with httpx.Client(transport=transport) as client:
+            result = _fetch_license("owner", "repo", client)
+        assert result == "Apache-2.0"
+
+    def test_noassertion_with_unknown_content_stays_noassertion(self) -> None:
+        """NOASSERTION で content が判別不能テキストなら NOASSERTION のまま返す。"""
+        license_text = "This is a proprietary license. All rights reserved."
+        encoded = base64.b64encode(license_text.encode()).decode()
+        body = {
+            "license": {"spdx_id": "NOASSERTION"},
+            "content": encoded,
+        }
+        transport = _make_transport({"/license": (200, body)})
+        with httpx.Client(transport=transport) as client:
+            result = _fetch_license("owner", "repo", client)
+        assert result == "NOASSERTION"
+
+    def test_noassertion_no_content_stays_noassertion(self) -> None:
+        """NOASSERTION で content がない場合は NOASSERTION のまま返す。"""
+        body = {
+            "license": {"spdx_id": "NOASSERTION"},
+            "content": "",
+        }
+        transport = _make_transport({"/license": (200, body)})
+        with httpx.Client(transport=transport) as client:
+            result = _fetch_license("owner", "repo", client)
+        assert result == "NOASSERTION"

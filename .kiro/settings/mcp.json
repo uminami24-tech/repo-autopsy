@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "autopsy": {
+      "command": "uv",
+      "args": ["run", "autopsy-mcp"],
+      "env": {},
+      "disabled": false
+    }
+  }
+}

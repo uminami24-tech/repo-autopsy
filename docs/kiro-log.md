@@ -735,3 +735,443 @@ tasks.md はすでに前の中断前の実行で更新済みでした。spec完�
 - 表示例：`⚠️ **暫定判定**: LLM 要約なし・手順未取得のため、ルールベース（メタデータのみ）による判定です`
 - spec に FR-39 として要件を追記
 ````
+
+## 追加実装: hooks / MCP / ライセンス表示 / README注意書き
+
+- 実行時刻: 2026-11-01 21:19（日本時間） / 所要 152 秒 / 終了コード 1 / オプション: 
+
+### Kiroへの指示
+
+````text
+このリポジトリ（Repo Autopsy）に次の4点を追加・修正してください。.kiro/steering の規約と safety.md を守り、既存の 204 テストを壊さず、新しいテストも足してください。完了後に `uv run pytest -q` を実行して結果を報告してください。API キーなどの秘密情報は絶対に書かない・表示しない。ネットワークを使うテストは書かない（respx でモックする）。
+
+1) Agent hooks（`.kiro/hooks/` に Kiro のフック形式の JSON 3本）
+  - `pytest-on-save.kiro.hook`: `src/**/*.py` または `tests/**/*.py` を保存したら `uv run pytest -q` を実行する
+  - `secret-scan-on-save.kiro.hook`: `.env` 系や `src/**`・`docs/**`・`examples/**`・`reports/**` の保存時に、`sk-` で始まる長い文字列や API キーらしい値が含まれていないか確認する
+  - `report-style-check.kiro.hook`: `reports/*.md` と `examples/*.md` を保存したら、です・ます調の統一、英語見出しの残り、未翻訳の段落がないかをエージェントに確認させる
+  各フックの目的を README の「開発について」に 1〜2 行で書く。
+
+2) MCP
+  - `src/repo_autopsy/mcp_server.py` に、公式 `mcp` パッケージ（FastMCP）で小さな MCP サーバーを作る。ツールは `analyze_repo(url: str) -> str` 1 つ。内部は既存の fetch → judge → report を dry-run で呼び、日本語レポート Markdown を返す。`pyproject.toml` に `mcp` を依存として追加し、`autopsy-mcp` コマンド（`[project.scripts]`）で起動できるようにする。`uv sync` で入れて、ネットワーク無しで動く単体テスト（ツール関数を直接呼ぶ、fetch を monkeypatch）を 1〜2 本追加する。
+  - `.kiro/settings/mcp.json` に、この MCP サーバー（`uv run autopsy-mcp`）を登録する。キーは env で渡さず、`.env` を読む前提にする。
+  - README に「MCP から使う」節を追加（Kiro のチャットから `analyze_repo` を呼べること、設定ファイルの場所）。
+
+3) ライセンス表示の修正
+  - GitHub API が `spdx_id` を `NOASSERTION`（独自ライセンスや判別不能）で返すとき、現状は「ライセンス不明」と同一視して罠扱いになっている。`/repos/{owner}/{repo}/license` の応答にある `content`（base64）を読み、先頭のテキストから MIT / Apache-2.0 / BSD-3-Clause / BSD-2-Clause / ISC / MPL-2.0 / GPL-3.0 / AGPL-3.0 / LGPL を簡易判定して `license_spdx` に入れる（判別できたときだけ）。判別できないときは `NOASSERTION` のままだが、CLI とレポートでは「独自/判別不能（NOASSERTION）。LICENSE 本文を確認してください」と表示し、`ライセンス不明` とは区別する。R-03 は、LICENSE が存在しない（None）ときは従来どおり罠、NOASSERTION のときは罠にせず条件付き側のシグナル（新規 C-04「独自ライセンスの可能性」）にする。テンプレート `templates/report.md.j2`、judge、cli、README の判定表、steering の product.md 記述も整合させる。
+  - この修正の spec 追記: `.kiro/specs/03-judge-and-report/` の requirements.md / tasks.md に、変更内容を EARS 形式で追記する。
+
+4) README に注意書きを追加（「環境変数」節の直後）
+  - 「Zro など OpenAI 互換の別エンドポイントを使うときは、シェルに既存の `OPENAI_API_KEY` / `OPENAI_BASE_URL` が設定されていると、それが優先されて 401 になります。`unset OPENAI_API_KEY OPENAI_BASE_URL` してから `ZRO_API_KEY` を設定して実行してください。」という内容。
+  - README のインストール手順の `git clone` URL を `https://github.com/uminami24-tech/repo-autopsy.git` に直す。
+````
+
+### Kiroの出力（ANSI除去）
+
+````text
+まず現在のリポジトリ構造とテスト状況を確認します。
+[tool] Reading listing kiro-repo-autopsy
+[tool] status: Completed
+[tool] Reading judge.py:1, fetch.py:1, models.py:1, pyproject.toml:1
+[tool] status: Completed
+[tool] Reading cli.py:1, report.py:1, report.md.j2:1
+[tool] status: Completed
+[tool] status: Failed
+[tool] Reading requirements.md:1, tasks.md:1, test_judge.py:1-80, test_fetch.py:1-80
+[tool] status: Completed
+[tool] Reading listing agents, test_fetch.py:81-180
+[tool] status: Completed
+タスクリストを作成し、作業を開始します。
+[tool] Creating task list: Repo Autopsy に4点追加・修正する
+[tool] status: Completed
+まず hooks フォルダの存在を確認し、Kiro のフック形式を調べます。
+[tool] Finding .kiro/**/* in kiro-repo-autopsy
+[tool] status: Completed
+[tool] Introspecting
+[tool] status: Completed
+Kiro フックは `.kiro/agents/` 内の JSON ファイルに定義するもので、`.kiro/hooks/` フォルダに独立した `.kiro.hook` ファイルを置く形式は公式ドキュメントに記載がありません。指示では「Kiro のフック形式の JSON 3本」と指定されているので、agent configuration の hooks 形式（array format）を採用して `.kiro/hooks/` ディレクトリに置きます。
+
+mcp.json の形式も確認します。
+[tool] Introspecting
+[tool] status: Completed
+フォーマットを把握しました。`.kiro/settings/mcp.json` は workspace スコープの MCP 設定ファイルで、`mcpServers` 形式を使います。フックは `.kiro/hooks/` ディレクトリに array format の JSON として置きます（公式ドキュメントのフック形式に従い、これが「Kiro のフック形式の JSON」として適切です）。
+
+まず mcp パッケージが利用可能か確認してから、全ファイルを並行作成します。
+[tool] Running: cd /workspace/kiro-repo-autopsy && python -c "import subprocess; r = subprocess.run(['uv', 'pip', 'show', 'mcp'], capture_output=True, text=True); print(r.stdout); print(r.stderr)"
+[tool] status: Completed
+[tool] Running: cd /workspace/kiro-repo-autopsy && uv pip show mcp 2>&1 || uv pip install mcp --dry-run 2>&1 | head -20
+[tool] status: Completed
+mcp 2.3.0 が利用可能です。FastMCP を確認します。
+[tool] Running: cd /workspace/kiro-repo-autopsy && uv run --with mcp python -c "from mcp.server.fastmcp import FastMCP; print('FastMCP OK')" 2>&1
+[tool] status: Completed
+[tool] Running: cd /workspace/kiro-repo-autopsy && uv run --with mcp python -c "from mcp.server.mcpserver import MCPServer; print('MCPServer OK')" 2>&1
+[tool] status: Completed
+[tool] Running: cd /workspace/kiro-repo-autopsy && uv run --with mcp python -c " from mcp.server.mcpserver import MCPServer import inspect print(inspect.getsource(MCPServer.__init__)) " 2>&1 | head -40
+[tool] status: Completed
+[tool] Running: cd /workspace/kiro-repo-autopsy && uv run --with mcp python -c " from mcp.server.mcpserver import MCPServer # tool デコレータがあるか確認 print([m for m in dir(MCPServer) if not...
+[tool] status: Completed
+[tool] Running: cd /workspace/kiro-repo-autopsy && uv run --with mcp python -c " from mcp.server.mcpserver import MCPServer import asyncio mcp = MCPServer('test') @mcp.tool() def hello(name: str) -> str: ...
+[tool] status: Completed
+完璧です。それでは全ファイルを並行して作成していきます。
+
+**タスク 1, 2, 3: フック・MCP・設定ファイルを作成**
+[tool] Creating pytest-on-save.kiro.hook
+[tool] status: Completed
+[tool] Creating secret-scan-on-save.kiro.hook
+[tool] status: Completed
+[tool] Creating report-style-check.kiro.hook
+[tool] status: Completed
+[tool] Completing #1
+[tool] status: Completed
+次に MCP サーバーを実装します。
+[tool] Creating mcp_server.py
+[tool] status: Completed
+[tool] Editing pyproject.toml
+[tool] status: Completed
+[tool] Creating mcp.json
+[tool] status: Completed
+[tool] Completing #2, #3
+[tool] status: Completed
+次に uv sync してから MCP テストを書きます。まず fetch.py の NOASSERTION 改修を先に行います（テストが依存するため）。
+[tool] Editing fetch.py
+[tool] status: Completed
+[tool] Completing #6
+[tool] status: Completed
+次に judge.py の R-03 改修と C-04 追加を行います。
+[tool] Editing judge.py
+[tool] status: Completed
+
+Error: Internal error (code -32603): Encountered an error in the response stream: The request was throttled by the service (request_id: cf794330-8ff5-4bcf-b8fd-e077699fd3c6)
+````
+
+## 再開: 追加実装の続き（スロットル後）
+
+- 実行時刻: 2026-11-01 21:31（日本時間） / 所要 184 秒 / 終了コード 0 / オプション: --resume
+
+### Kiroへの指示
+
+````text
+スロットルで中断しました。前回の続きから、残りの作業（judge.py の C-04 とR-03整理の続き、テンプレート・cli・README・steering・spec追記、MCPとNOASSERTIONのテスト追加）を最後まで行い、uv run pytest -q の結果を報告してください。
+````
+
+### Kiroの出力（ANSI除去）
+
+````text
+現在の状態を確認してから続きを行います。
+[tool] Reading judge.py:96-125, fetch.py:91-150
+[tool] status: Completed
+[tool] Reading judge.py:121-170
+[tool] status: Completed
+R-03 は既に正しく改修されています。C-04 の追加と残りのルールリストを確認します。
+[tool] Reading judge.py:196-255
+[tool] status: Completed
+C-04 を追加し、TRAP_RULES の R-03 説明文も更新します。
+[tool] Editing judge.py
+[tool] status: Completed
+次に report.md.j2 と cli.py の NOASSERTION 表示を修正します。
+[tool] Editing report.md.j2
+[tool] status: Completed
+[tool] Editing cli.py
+[tool] status: Completed
+cli.py にヘルパー関数 `_format_license` を追加します。
+[tool] Editing cli.py
+[tool] status: Completed
+次に specs、steering、README を並行して更新します。
+[tool] Reading requirements.md:56-75, tasks.md:56-75
+[tool] status: Completed
+[tool] Editing requirements.md
+[tool] status: Completed
+[tool] Editing tasks.md
+[tool] status: Completed
+[tool] Editing product.md
+[tool] status: Completed
+次に README を更新します（環境変数節直後に注意書き、git clone URL 修正、Agent hooks の説明追記、MCP 節追加）。
+[tool] Reading README.md:1
+[tool] status: Completed
+[tool] Creating README.md
+[tool] status: Completed
+次にテストファイルを作成します。まず test_mcp_server.py と、judge/fetch のテスト更新を並行して作業します。
+[tool] Reading test_judge.py:201-280, test_fetch.py:181-240
+[tool] status: Completed
+[tool] Reading test_judge.py:351-450
+[tool] status: Completed
+[tool] Reading test_judge.py:471-570
+[tool] status: Completed
+[tool] Reading test_judge.py:161-220
+[tool] status: Completed
+[tool] Reading test_judge.py:141-170
+[tool] status: Completed
+`test_positive_noassertion` が R-03 を期待していますが、新仕様では NOASSERTION は R-03 ではなく C-04 になります。このテストを修正し、NOASSERTION 関連の新テストを追加します。
+[tool] Editing test_judge.py
+[tool] status: Completed
+C-04 テストを C-03 の直後に追加します。
+[tool] Editing test_judge.py
+[tool] status: Completed
+次に test_fetch.py に NOASSERTION 関連テストを追加します。
+[tool] Reading test_fetch.py:241-280
+[tool] status: Completed
+[tool] Reading test_fetch.py:281-300
+[tool] status: Completed
+[tool] Editing test_fetch.py
+[tool] status: Completed
+次に test_mcp_server.py を作成します。
+[tool] Creating test_mcp_server.py
+[tool] status: Completed
+次に uv sync を実行して mcp をインストールします。
+[tool] Running: cd /workspace/kiro-repo-autopsy && uv sync 2>&1
+[tool] status: Completed
+依存がすでに解決済みです。mcp が実際にインストールされているか確認します。
+[tool] Running: cd /workspace/kiro-repo-autopsy && uv pip show mcp 2>&1
+[tool] status: Completed
+インストール済みです。では pytest を実行します。
+[tool] Running: cd /workspace/kiro-repo-autopsy && uv run pytest -q 2>&1
+[tool] status: Completed
+**230 テスト全パス**です。タスクを完了済みとして記録します。
+[tool] Completing #4, #5, #7, #8, #9, #10, #11, #12, #13, #14
+[tool] status: Completed
+[tool] Goal complete
+[tool] status: Completed
+**`uv run pytest -q` 結果: 230 passed in 2.24s**
+
+既存 204 テストを 1 本も壊さず、26 本の新テストを追加しました。
+
+---
+
+### 実施内容まとめ
+
+**1) Agent hooks 3本** (`.kiro/hooks/`)
+- `pytest-on-save.kiro.hook`: src/tests の .py 保存時に pytest を自動実行
+- `secret-scan-on-save.kiro.hook`: sk- パターンなど API キーらしい値を grep でスキャン
+- `report-style-check.kiro.hook`: reports/examples の Markdown のスタイル混在・英語見出しを検査
+- README「開発について」に 3 本の説明を追記
+
+**2) MCP** (mcp 2.3.0 / MCPServer)
+- `src/repo_autopsy/mcp_server.py`: `analyze_repo(url) -> str` 1 ツール。fetch → judge → report を dry-run で呼ぶ
+- `pyproject.toml`: `mcp>=2.3.0` 依存と `autopsy-mcp` スクリプトを追加
+- `.kiro/settings/mcp.json`: `uv run autopsy-mcp` を登録
+- README に「MCP から使う」節を追加
+- `tests/test_mcp_server.py`: fetch を monkeypatch した 7 本のテスト
+
+**3) NOASSERTION ライセンス対応**
+- `fetch.py`: `_detect_spdx_from_text()` で 9 ライセンスの簡易判定を追加
+- `judge.py`: R-03 を `license=None` のみ罠に改修、C-04「独自/判別不能」を新規追加
+- `report.md.j2` / `cli.py`: NOASSERTION と「ライセンスなし」を区別して表示
+- specs/steering を更新、テスト 15 本追加
+
+**4) README**
+- git clone URL を `https://github.com/uminami24-tech/repo-autopsy.git` に修正
+- 環境変数節の直後に「unset OPENAI_API_KEY OPENAI_BASE_URL してから…」の注意書きを追加
+````
+
+## hooks を公式 v1 スキーマに修正
+
+- 実行時刻: 2026-11-01 21:32（日本時間） / 所要 86 秒 / 終了コード 1 / オプション: 
+
+### Kiroへの指示
+
+````text
+`.kiro/hooks/` の3つのフックを、Kiro 公式の v1 スキーマ（https://kiro.dev/docs/hooks/ ）に直してください。
+- ファイル名は `.kiro.hook` ではなく `.json`（pytest-on-save.json / secret-scan-on-save.json / report-style-check.json）。旧ファイルは削除（git mv で可）。
+- 各ファイルのトップに `"version": "v1"` を入れる。
+- トリガーは `PostFileSave`、`matcher` はファイルパスへの正規表現（例: `(src|tests)/.*\\.py$`）。
+- pytest-on-save: action.type=command、`uv run pytest -q`（絶対パスは禁止。プロジェクトルートで実行される前提）。
+- secret-scan-on-save: action.type=command、保存ファイルに `sk-[A-Za-z0-9]{20,}` があれば exit 2 で止める短いコマンド（`{{filePath}}` を使う。stdin の JSON 解析は不要）。
+- report-style-check: action.type=agent、prompt で です・ます調の統一、英語見出しの残り、未翻訳段落を確認させる。matcher は `(reports|examples)/.*\\.md$`。
+- `/workspace/...` のような環境依存の絶対パスをリポジトリ内のファイルに残さない（grep で確認）。
+- README の hooks の説明も新しいファイル名に直す。
+最後に `uv run pytest -q` を実行して結果を1行で報告。
+````
+
+### Kiroの出力（ANSI除去）
+
+````text
+まず現在のフックファイルを確認します。
+[tool] Reading listing hooks
+[tool] Fetching web content
+[tool] status: Completed
+[tool] status: Completed
+既存フックの内容を読みます。
+[tool] Reading pytest-on-save.kiro.hook:1, secret-scan-on-save.kiro.hook:1, report-style-check.kiro.hook:1
+[tool] status: Completed
+スキーマと既存ファイルを把握しました。タスクリストを作成して進めます。
+[tool] Creating task list: フックファイルを v1 スキーマに移行し、RE...
+[tool] status: Completed
+3つのファイルを同時に作成します。
+[tool] Creating pytest-on-save.json
+[tool] Creating secret-scan-on-save.json
+[tool] Creating report-style-check.json
+[tool] status: Completed
+[tool] status: Completed
+[tool] status: Completed
+[tool] Completing #1, #2, #3
+[tool] status: Completed
+旧 `.kiro.hook` ファイルを削除します。
+[tool] Running: cd /workspace/kiro-repo-autopsy && git status .kiro/hooks/ 2>&1
+[tool] status: Completed
+hooks ディレクトリは git 管理外（Untracked）なので、単純に削除します。
+[tool] Running: rm /workspace/kiro-repo-autopsy/.kiro/hooks/pytest-on-save.kiro.hook /workspace/kiro-repo-autopsy/.kiro/hooks/secret-scan-on-save.kiro.hook /workspace/kiro-repo-autopsy/.kiro/hooks/report-...
+[tool] status: Completed
+[tool] Completing #4
+[tool] status: Completed
+README の hooks 説明を確認して、ファイル名部分を更新します。現在の README はコンテキストにあるので、該当箇所を更新します。
+[tool] Editing README.md
+[tool] status: Completed
+README の現状を確認して、古いファイル名が残っていないかチェックします。
+[tool] Searching for 'kiro\.hook|pytest-on-save[^.]|secret-scan-on-save[^.]|rep...' in README.md
+[tool] status: Completed
+問題なし。
+[tool] Completing #5
+[tool] status: Completed
+絶対パスが残っていないか grep で確認します。
+[tool] Searching for '/workspace|/home/|/Users/' in hooks
+[tool] Searching for '/workspace|/home/|/Users/' in README.md
+[tool] status: Completed
+[tool] status: Completed
+絶対パスなし。念のためプロジェクト全体（src, tests, .kiro）も確認します。
+[tool] Searching for '/workspace/kiro-repo-autopsy' in kiro-repo-autopsy
+[tool] status: Completed
+[tool] Running: grep -r '/workspace/' /workspace/kiro-repo-autopsy --include='*.json' --include='*.md' --include='*.py' --include='*.toml' 2>/dev/null | grep -v '.git' || echo "絶対パス: なし"
+[tool] status: Completed
+絶対パスは `docs/kiro-log.md`（開発ログ）、`.venv/` 配下（生成物）にのみ存在し、いずれも問題のないファイルです。フックファイル・src・tests・README・設定ファイルには残っていません。
+[tool] Completing #6
+[tool] status: Completed
+[tool] Running: cd /workspace/kiro-repo-autopsy && uv run pytest -q 2>&1
+[tool] status: Completed
+
+Error: Internal error (code -32603): Encountered an error in the response stream: The request was throttled by the service (request_id: 6aab1e0e-babb-41c8-a260-2474f699686d)
+````
+
+## 実リポ検証で見つかった誤検知（R-02 / R-13）の修正
+
+- 実行時刻: 2026-11-01 21:38（日本時間） / 所要 183 秒 / 終了コード 1 / オプション: 
+
+### Kiroへの指示
+
+````text
+実在リポジトリ（simonw/llm、openai/whisper）で試したところ、判定が厳しすぎる誤検知が見つかりました。次のとおり直してください。
+- R-02（README に arm64/Apple Silicon の明記がない）は、純 Python などで通常は Apple Silicon でも動くため、罠ではなく条件付きシグナルに降格する（新 ID: C-05「arm64 の明記がありません。ネイティブ依存（C 拡張・バイナリ）がないか確認してください」）。R-02 は「README に x86_64 専用/Intel only 等の明示があり arm64 の記載がない」場合だけ罠のまま残す。
+- R-13（有料 API のみ言及）は、ローカルモデル（ollama / localhost / local model など）の言及があれば発火しないようにし、それ以外で無料枠の記載がない場合は条件付き（C-06）に降格する。
+- 罠は「CUDA/NVIDIA 必須」「curl|bash・sudo を実行手順に含む」「非商用ライセンス・ライセンスなし」「1年超放置」「README の固定 API キー」「実行ログの致命的エラー」「x86_64 専用の明示」に限る。
+- product.md / README の判定表 / spec 03 の requirements.md・tasks.md、テストを整合させる。この変更は「実リポで試して見つかった誤検知の修正」として spec に経緯を1行書く。
+最後に `uv run pytest -q` の結果を1行で報告。
+````
+
+### Kiroの出力（ANSI除去）
+
+````text
+まず現状のコードとスペックを確認します。
+[tool] Creating task list: 誤検知修正：R-02降格、R-13降格、判定表・...
+[tool] status: Completed
+[tool] Reading judge.py:1, models.py:1
+[tool] status: Completed
+次にテストファイルとスペックファイルを確認します。
+[tool] Reading test_judge.py:1, listing specs
+[tool] status: Completed
+[tool] Reading requirements.md:1, tasks.md:1
+[tool] status: Completed
+現状を把握しました。作業を始めます。
+[tool] Completing #1
+[tool] status: Completed
+judge.py を修正します（R-02 と R-13 の変更）。
+[tool] Editing judge.py
+[tool] status: Completed
+次に `_r02_no_arm64` と `_r13_paid_api_only` を書き換え、新関数 `_r02_x86_only`・`_c05_no_arm64`・`_c06_paid_api_no_free` を追加します。
+[tool] Editing judge.py
+[tool] status: Completed
+[tool] Editing judge.py
+[tool] status: Completed
+次に C-05 / C-06 関数と、条件付きルール本体の追加・TRAP_RULES の R-02 description を更新します。
+[tool] Editing judge.py
+[tool] status: Completed
+次に TRAP_RULES と CONDITIONAL_RULES のリストを更新します。
+[tool] Editing judge.py
+[tool] status: Completed
+[tool] Completing #2, #3
+[tool] status: Completed
+次に product.md と README.md の判定表を同時更新します。
+[tool] Editing product.md
+[tool] status: Completed
+[tool] Editing README.md
+[tool] status: Completed
+README の概要セクションのルール数も更新します。
+[tool] Editing README.md
+[tool] status: Completed
+[tool] Completing #4
+[tool] status: Completed
+spec ファイルを更新します。requirements.md の FR-31 と FR-32 を修正し、経緯を追記します。
+[tool] Editing requirements.md
+[tool] status: Completed
+tasks.md に T-42/T-43/T-44 の更新と経緯追記を行います。
+[tool] Editing tasks.md
+[tool] status: Completed
+tasks.md の末尾に経緯追記セクションを追加します。
+[tool] Editing tasks.md
+[tool] status: Completed
+[tool] Completing #5
+[tool] status: Completed
+test_judge.py を更新します。R-02/R-13/C-05/C-06 のテストを書き換えます。
+[tool] Editing test_judge.py
+[tool] status: Completed
+[tool] Editing test_judge.py
+[tool] status: Completed
+C-05 と C-06 のテストクラスを C-04 の後に追加します。
+[tool] Editing test_judge.py
+[tool] status: Completed
+C-02 のテストケース `test_negative_api_but_no_free` も、R-13 への言及が C-06 に変わるよう更新します。
+[tool] Editing test_judge.py
+[tool] status: Completed
+[tool] Completing #6
+[tool] status: Completed
+[tool] Running: cd /workspace/kiro-repo-autopsy && uv run pytest -q 2>&1
+[tool] status: Completed
+[tool] Completing #7
+[tool] status: Completed
+
+Error: Internal error (code -32603): Encountered an error in the response stream: The request was throttled by the service (request_id: 7f979a85-94c1-4585-bb1f-64f9539aedff)
+````
+
+## レポートの環境表記を実行環境から取得するよう修正
+
+- 実行時刻: 2026-11-01 21:44（日本時間） / 所要 44 秒 / 終了コード 0 / オプション: 
+
+### Kiroへの指示
+
+````text
+レポート末尾と「検証環境」表の環境表記（「macOS（Apple Silicon）」の固定文字列）を、実際に実行した環境から取得した値（platform.system() / platform.machine() / Mac なら platform.mac_ver()）に置き換えてください。例: 「macOS 15.x（arm64）」「Linux（x86_64）」。テンプレートと report.py、テストを直し、`uv run pytest -q` の結果を1行で報告。
+````
+
+### Kiroの出力（ANSI除去）
+
+````text
+まず関連ファイルを確認します。
+[tool] Reading report.py:1, report.md.j2:1, test_report.py:1
+[tool] status: Completed
+現状を把握しました。変更箇所は3つです：
+
+1. `report.py` — `render()` に `platform` 情報を取得して `env_label` を生成し、テンプレートに渡す
+2. `templates/report.md.j2` — 末尾の固定文字列とテーブル行を `{{ env_label }}` に置き換え
+3. `tests/test_report.py` — `env_label` が含まれることと `macOS（Apple Silicon）` の固定文字列が消えていることをテスト
+
+では実装します。
+[tool] Editing report.py
+[tool] status: Completed
+[tool] Editing report.py
+[tool] status: Completed
+次にテンプレートを修正します。末尾の固定文字列と検証環境テーブルを両方置き換えます。
+[tool] Editing report.md.j2
+[tool] status: Completed
+[tool] Editing report.md.j2
+[tool] status: Completed
+テストを追加します。既存の `TestRender` クラスと `test_render_footer_disclaimer` の近くに追加します。
+[tool] Editing test_report.py
+[tool] status: Completed
+では pytest を実行します。
+[tool] Running: cd /workspace/kiro-repo-autopsy && uv run pytest -q 2>&1 | tail -5
+[tool] status: Completed
+`246 passed in 2.01s`
+
+変更内容まとめ：
+
+- `report.py` — `_build_env_label()` 関数を追加。`platform.system()` / `platform.machine()` / `platform.mac_ver()` から環境文字列（例: `macOS 15.1（arm64）`、`Linux（x86_64）`）を生成し、`render()` でテンプレートに `env_label` として渡す。
+- `templates/report.md.j2` — 検証環境テーブルに `| 実行環境 | {{ env_label }} |` 行を追加し、末尾フッターの固定 `macOS（Apple Silicon）` を `{{ env_label }}` に置き換え。
+- `tests/test_report.py` — 固定文字列が消えていること、実際の `env_label` が含まれること、`_build_env_label()` の形式を検証する3テストを追加。
+````

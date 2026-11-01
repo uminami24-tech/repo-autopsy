@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import platform
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,6 +15,25 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from .models import Plan, RepoMeta, RunResult, Verdict
+
+
+def _build_env_label() -> str:
+    """実行環境の文字列を生成する。
+
+    Returns:
+        例: "macOS 15.1（arm64）"、"Linux（x86_64）"、"Windows（AMD64）"
+    """
+    system = platform.system()
+    machine = platform.machine()
+
+    if system == "Darwin":
+        mac_ver = platform.mac_ver()[0]  # e.g. "15.1.0"
+        # メジャー.マイナーのみ ("15.1")
+        short_ver = ".".join(mac_ver.split(".")[:2]) if mac_ver else ""
+        os_name = f"macOS {short_ver}" if short_ver else "macOS"
+        return f"{os_name}（{machine}）"
+    else:
+        return f"{system}（{machine}）"
 
 # テンプレートディレクトリの解決順:
 #   1. プロジェクトルート直下の templates/
@@ -61,6 +81,7 @@ def render(
     template = env.get_template("report.md.j2")
 
     generated_at = datetime.now(tz=timezone.utc).isoformat()
+    env_label = _build_env_label()
 
     content = template.render(
         meta=meta,
@@ -68,6 +89,7 @@ def render(
         run_result=run_result,
         verdict=verdict,
         generated_at=generated_at,
+        env_label=env_label,
     )
     return content
 

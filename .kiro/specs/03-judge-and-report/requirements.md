@@ -20,7 +20,7 @@ THE SYSTEM SHALL `使える` / `条件付き` / `罠` のいずれか 1 つの�
 THE SYSTEM SHALL 以下のシグナルを検出したとき「罠」シグナルとして記録しなければならない：
 
 1. `cuda`, `nvidia-smi`, `torch.cuda` がコマンドまたは README に含まれる（CUDA 必須）
-2. README に `arm64` または `Apple Silicon` 向けのバイナリ・wheel が明示されていない（arm64 未サポート）
+2. README に `x86_64 only` / `Intel only` 等の x86 専用の明示があり arm64 の記載がない（x86 専用宣言）
 3. ライセンスが `CC-BY-NC` / `AGPL` / ライセンス不明（商用制限またはライセンス無し）
 4. 最終コミット日時が 365 日以上前（放置リポジトリ）
 5. リリースが 0 件かつスターが 10 未満（未検証・未成熟）
@@ -31,7 +31,7 @@ THE SYSTEM SHALL 以下のシグナルを検出したとき「罠」シグナル
 10. 実行ログに `No matching distribution found` が含まれる（arm64 wheel 不存在）
 11. 実行ログに `Killed` が含まれる（OOM によるプロセス強制終了）
 12. 実行ログに `command not found` が含まれる（コマンド不在）
-13. 有料 API への言及（`openai.api_key`, `ANTHROPIC_API_KEY` 等）があり、無料枠の記載がない
+13. （廃止）旧「有料 API のみ言及・無料枠なし」は C-06 に降格（2026-11-01 実リポ検証で誤検知を確認）
 
 ### FR-32 条件付きシグナルのルール
 
@@ -40,6 +40,9 @@ THE SYSTEM SHALL 以下を「条件付き」シグナルとして記録しなけ
 1. `Rosetta` または `x86_64` が README に含まれる（Rosetta 必要の可能性）
 2. 有料 API への言及があるが無料枠の説明もある
 3. ライセンスが `GPL` または `LGPL`（商用利用に条件あり）
+4. ライセンスが `NOASSERTION`（独自/判別不能）。LICENSE 本文を確認してください（C-04）
+5. README に `arm64`/`Apple Silicon`/`aarch64` の明記がない（純 Python 等は動作する場合が多いため条件付き）（C-05）
+6. 有料 API への言及があり、無料枠の記載もなく、ローカルモデル（ollama/localhost 等）の言及もない（C-06）
 
 ### FR-33 判定の優先順位
 
@@ -89,3 +92,34 @@ THE SYSTEM SHALL 生成されたレポートに英語の見出し（`#` 行）�
 
 WHEN LLM の呼び出しが失敗して `plan.llm_error` が設定されているとき、  
 THE SYSTEM SHALL 生成されたレポートに「**暫定判定**: LLM 要約なし・手順未取得のため、ルールベース（メタデータのみ）による判定です」と明記しなければならない。
+
+---
+
+## 変更追記（2026-11-01）— NOASSERTION ライセンス対応
+
+### FR-04b NOASSERTION 時のライセンス簡易判定（fetch）
+
+WHEN GitHub API の `/repos/{owner}/{repo}/license` が `spdx_id = "NOASSERTION"` を返したとき、  
+THE SYSTEM SHALL レスポンスの `content`（base64）をデコードし、先頭テキストから  
+MIT / Apache-2.0 / BSD-3-Clause / BSD-2-Clause / ISC / MPL-2.0 / GPL-3.0 / AGPL-3.0 / LGPL-3.0  
+のいずれかに簡易判定して `license_spdx` に設定しなければならない。  
+IF 判別できない場合は、`license_spdx` に `"NOASSERTION"` を設定しなければならない。
+
+### FR-31b R-03 ルール改定（license=None は罠、NOASSERTION は条件付き）
+
+WHEN ライセンス識別子が `None`（LICENSE ファイルが存在しない）のとき、  
+THE SYSTEM SHALL 従来どおり「罠（R-03）」シグナルを発生させなければならない。  
+WHEN ライセンス識別子が `"NOASSERTION"`（独自ライセンス・判別不能）のとき、  
+THE SYSTEM SHALL R-03 を発生させず、代わりに「条件付き（C-04）」シグナルを発生させなければならない。
+
+### FR-32b C-04 シグナル追加（独自ライセンスの可能性）
+
+THE SYSTEM SHALL `license_spdx == "NOASSERTION"` のとき、  
+「C-04: 独自ライセンスまたは判別不能（NOASSERTION）。LICENSE 本文を確認してください」  
+という条件付きシグナルを追加しなければならない。
+
+### FR-40 NOASSERTION の CLI・レポート表示
+
+WHEN `license_spdx` が `"NOASSERTION"` のとき、  
+THE SYSTEM SHALL CLI とレポートに「独自/判別不能（NOASSERTION）。LICENSE 本文を確認してください」と表示しなければならない。  
+「ライセンス不明」（license=None の場合）と区別して表示しなければならない。
